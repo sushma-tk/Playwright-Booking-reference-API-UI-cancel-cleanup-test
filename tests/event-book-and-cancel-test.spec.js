@@ -4,7 +4,7 @@ const { test, expect, request } = require('@playwright/test');
 const APP_URL = 'https://eventhub.rahulshettyacademy.com';
 const API_URL = 'https://api.eventhub.rahulshettyacademy.com/api';
 
-const loginPayload = { email: 'sushma.tacholi@gmail.com', password: 'Sushma@1234' };
+const loginPayload = { email: '********@gmail.com', password: '88888@123488' };
 
 const QUANTITY = 2;
 const CUSTOMER_NAME = 'Customer Test';
