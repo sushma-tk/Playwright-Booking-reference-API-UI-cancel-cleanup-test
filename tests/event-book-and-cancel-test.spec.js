@@ -1,10 +1,9 @@
 const { test, expect, request } = require('@playwright/test');
 
 // ---------- Test data ----------
-const APP_URL = 'https://eventhub.rahulshettyacademy.com';
 const API_URL = 'https://api.eventhub.rahulshettyacademy.com/api';
 
-const loginPayload = { email: '********@gmail.com', password: '88888@123488' };
+const loginPayload = { email: process.env.EVENTHUB_EMAIL, password: process.env.EVENTHUB_PASSWORD };
 
 const QUANTITY = 2;
 const CUSTOMER_NAME = 'Customer Test';
@@ -21,7 +20,7 @@ test.beforeAll(async () => {
   const loginResponse = await loginContext.post(API_URL + '/auth/login', { data: loginPayload });
   expect(loginResponse.ok()).toBeTruthy();
   token = (await loginResponse.json()).token;
-  console.log(token);
+  //console.log(token);
   await loginContext.dispose();
  
   // API context with baseURL + token for all requests
@@ -57,7 +56,7 @@ test('Create booking via API, verify in UI, cancel via API', async ({ page }) =>
    const booking = (await createResponse.json()).data;
    const bookingId = booking.id;
    const bookingRef = booking.bookingRef;
-      console.log('Booking created:', JSON.stringify(booking, null, 2));
+   console.log('Booking created:', JSON.stringify(booking, null, 2));
 
   // Look up by reference and compare
   // calls the API to fetch the new booking by its reference code.
@@ -71,36 +70,49 @@ test('Create booking via API, verify in UI, cancel via API', async ({ page }) =>
   expect(lookup.totalPrice).toBe(booking.totalPrice);
 
 
-  await page.addInitScript(value => {
-    window.localStorage.setItem('eventhub_token', value);
-  }, token);
+  let deleted = false;
 
-  // My Bookings card
-  await page.goto(APP_URL + '/bookings');
-  const card = page.locator('[data-testid="booking-card"]').filter({ hasText: bookingRef });
-  await expect(card).toContainText(event.title);
-  await expect(card).toContainText(QUANTITY + ' ticket');
-  await expect(card).toContainText(String(expectedTotal));
+  try {
+    await page.addInitScript(value => {
+      window.localStorage.setItem('eventhub_token', value);
+    }, token);
 
-  // Details page
-  await card.getByText('View Details').click();
-  await expect(page).toHaveURL(APP_URL + '/bookings/' + bookingId);
-  await expect(page.locator('body')).toContainText(bookingRef);
-  await expect(page.locator('body')).toContainText(event.title);
-  await expect(page.locator('body')).toContainText(event.category);
-  await expect(page.locator('body')).toContainText(event.city);
-  await expect(page.locator('body')).toContainText(String(expectedTotal));
-  await expect(page.locator('body')).toContainText(CUSTOMER_EMAIL);
+    // My Bookings card
+    await page.goto('/bookings');
+    const card = page.locator('[data-testid="booking-card"]').filter({ hasText: bookingRef });
+    await expect(card).toContainText(event.title);
+    await expect(card).toContainText(QUANTITY + ' ticket');
+    await expect(card).toContainText(String(expectedTotal));
 
-  // Cancel via API
-  const deleteResponse = await apiContext.delete('bookings/' + bookingId);
-  expect(deleteResponse.ok()).toBeTruthy();
+    // Details page
+    await card.getByText('View Details').click();
+    await expect(page).toHaveURL('/bookings/' + bookingId);
+    await expect(page.locator('body')).toContainText(bookingRef);
+    await expect(page.locator('body')).toContainText(event.title);
+    await expect(page.locator('body')).toContainText(event.category);
+    await expect(page.locator('body')).toContainText(event.city);
+    await expect(page.locator('body')).toContainText(String(expectedTotal));
+    await expect(page.locator('body')).toContainText(CUSTOMER_EMAIL);
 
-  // Lookup again should fail
-  const afterDelete = await apiContext.get('bookings/ref/' + bookingRef);
-  expect(afterDelete.status()).toBe(404);
+    // Cancel via API
+    const deleteResponse = await apiContext.delete('bookings/' + bookingId);
+    expect(deleteResponse.ok()).toBeTruthy();
+    deleted = true;
 
-  // Card should be gone
-  await page.goto(APP_URL + '/bookings');
-  await expect(page.getByText(bookingRef)).toHaveCount(0);
+    // Lookup again should fail
+    const afterDelete = await apiContext.get('bookings/ref/' + bookingRef);
+    expect(afterDelete.status()).toBe(404);
+
+    // Card should be gone
+    await page.goto('/bookings');
+    await expect(page.getByRole('heading', { name: 'My Bookings' })).toBeVisible();
+    await expect(page.getByTestId('booking-card').first()).toBeVisible();
+    await expect(page.getByText(bookingRef)).toHaveCount(0);
+
+  } finally {
+    // if the test failed before deleting, delete the booking now
+    if (!deleted) {
+      await apiContext.delete('bookings/' + bookingId);
+    }
+  }
 });
